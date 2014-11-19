@@ -5,9 +5,9 @@ Archive material from DLNA media servers
 These tools are for use with any DLNA media server, accessible directly on
 the same LAN or indirectly using `ssdp-fake`.
 
-There are two tools: `dlna-media-walk` and `dlna-media-archive`.
+There are two tools: `dlna-mediaserver-walk` and `dlna-media-archive`.
 
-## `dlna-media-walk`
+## `dlna-mediaserver-walk`
 
 This tool displays the content tree of all the DLNA media servers it can see.
 
