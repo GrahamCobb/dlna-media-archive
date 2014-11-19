@@ -1,0 +1,63 @@
+#!/usr/bin/perl
+# Copyright (C) 2005 by Satoshi Konno
+# Copyright (C) 2014 Graham R. Cobb
+# Released under GPL V2 -- see LICENSE
+# Most of this code is taken from the documentation for Net::UPnP::AV::MediaServer -- see http://search.cpan.org/~skonno/Net-UPnP-1.4/lib/Net/UPnP/AV/MediaServer.pm
+
+use strict;
+use warnings;
+
+use Net::UPnP::ControlPoint;
+use Net::UPnP::AV::MediaServer;
+
+my $obj = Net::UPnP::ControlPoint->new();
+
+my @dev_list = $obj->search(st =>'upnp:rootdevice', mx => 3);
+
+my $devNum= 0;
+foreach my $dev (@dev_list) {
+    my $device_type = $dev->getdevicetype();
+    if  ($device_type ne 'urn:schemas-upnp-org:device:MediaServer:1') {
+	next;
+    }
+    print "[$devNum] : " . $dev->getfriendlyname() . "\n";
+    unless ($dev->getservicebyname('urn:schemas-upnp-org:service:ContentDirectory:1')) {
+	next;
+    }
+    my $mediaServer = Net::UPnP::AV::MediaServer->new();
+    $mediaServer->setdevice($dev);
+    my @content_list = $mediaServer->getcontentlist(ObjectID => 0);
+    foreach my $content (@content_list) {
+	print_content($mediaServer, $content, 1);
+    }
+    $devNum++;
+}
+
+sub print_content {
+    my ($mediaServer, $content, $indent) = @_;
+    my $id = $content->getid();
+    my $title = $content->gettitle();
+    for (my $n=0; $n<$indent; $n++) {
+	print "\t";
+    }
+    print "$id = $title";
+    if ($content->isitem()) {
+	print " (" . $content->geturl();
+	if (length($content->getdate())) {
+	    print " - " . $content->getdate();
+	}
+	print " - " . $content->getcontenttype() . ")";
+    }
+    print "\n";
+    unless ($content->iscontainer()) {
+	return;
+    }
+    my @child_content_list = $mediaServer->getcontentlist(ObjectID => $id );
+    if (@child_content_list <= 0) {
+	return;
+    }
+    $indent++;
+    foreach my $child_content (@child_content_list) {
+	print_content($mediaServer, $child_content, $indent);
+    }
+}
