@@ -7,6 +7,8 @@
 use strict;
 use warnings;
 
+use Getopt::Long 2.33 qw(:config gnu_getopt auto_help auto_version);
+use Pod::Usage;
 use Net::UPnP::ControlPoint;
 use Net::UPnP::AV::MediaServer;
 use File::Spec;
@@ -14,7 +16,105 @@ use File::Path qw(make_path);
 use HTTP::Tiny;
 use Text::Glob qw( match_glob glob_to_regex );
 
+our $VERSION = 0.2;
+
+my $verbosity = 2;
+my $man = 0;
+
+#
+# Logging
+#
+sub msgError
+{
+    print @_,"\n";
+}
+sub msgInfo
+{
+    print @_,"\n" if $verbosity >= 1;
+}
+sub msgProgress
+{
+    print @_,"\n" if $verbosity >= 2;
+}
+sub msgDebug
+{
+    print @_,"\n" if $verbosity >= 3;
+}
+
+#
+# Option processing
+#
+#Getopt::Long::Configure ("bundling");
+GetOptions(
+	   "verbose|v:+" => \$verbosity,
+	   "man" => \$man,
+	   ) or pod2usage(2);
+msgDebug "man = $man";
+if ($man) {
+    pod2usage(-verbose => 2);
+    exit;
+}
+
 my ($serverName) = @ARGV;
+
+msgDebug "verbosity = $verbosity";
+msgDebug "serverName = $serverName" if $serverName;
+
+=head1 NAME
+
+dlna-media-archive - Archive material from DLNA media servers
+
+=head1 SYNOPSIS
+
+dlna-media-archive [options] [<server-name>]
+
+dlna-media-archive -?|--help|--man|--version
+
+ Commands:
+
+  -?, --help			brief help message
+  --man 			full documentation
+  --version			script version
+
+ Options:
+
+  -v, --verbose[=N]	Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--help>
+
+Print a brief help message and exits.
+
+=item B<--man>
+
+Prints the manual page and exits.
+
+=back
+
+=head1 DESCRIPTION
+
+B<dlna-media-archive> downloads all the content from all the DLNA media servers
+it can see.
+
+B<server-name> specifies the name of the server (as advertised by the server).
+File glob style wildcards can be included.
+
+=head1 EXAMPLES
+
+=over 8
+
+=item B<dlna-media-archive "HDR-2000T*">
+
+Downloads all content from all Humax HDR-2000T servers.
+
+=back
+
+=cut
+
+
 
 my $obj = Net::UPnP::ControlPoint->new();
 
@@ -34,7 +134,7 @@ foreach my $dev (@dev_list) {
 	    next;
 	}
     } else {
-	print "Archiving server ", $dev->getfriendlyname(), "...\n";
+	msgInfo "Archiving server ", $dev->getfriendlyname(), "...";
     }
     
     my $mediaServer = Net::UPnP::AV::MediaServer->new();
@@ -48,9 +148,9 @@ foreach my $dev (@dev_list) {
 
 if (!$servers) {
     if ($serverName) {
-	print "No servers found matching $serverName\n";
+	msgError "No servers found matching $serverName";
     } else {
-	print "No servers found\n";
+	msgError "No servers found";
     }
     exit 1;
 }
@@ -76,14 +176,14 @@ sub archive_content {
 
     my $url = $content->geturl();
     my $file = File::Spec->catfile($dir, $content->gettitle());
-    # print "($url => $file)\n";
+    msgDebug "($url => $file)";
 
     # HTTP::Tiny::mirror handles safe mirroring (redownload if incomplete or if file has changed).
     # Unfortunately, the Media Server does not necessarily handle the If-Modified-Since header
     # so we just do not download if the file already exists. This is safe as HTTP::Tiny::mirror
     # will not have renamed the download to the specified name unless the download was successful.
     if (! -e $file) {
-	print "$url => $file\n";
+	msgProgress "$url => $file";
 	my $http = HTTP::Tiny->new();
 	my $resp = $http->mirror($url, $file);
 	unless ($resp->{success}) {die "Download of $url failed: ", $resp->{status}, $resp->{reason};}
