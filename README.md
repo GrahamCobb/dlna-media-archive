@@ -9,7 +9,8 @@ There are two tools: `dlna-mediaserver-walk` and `dlna-media-archive`.
 
 ## `dlna-mediaserver-walk`
 
-This tool displays the content tree of all the DLNA media servers it can see.
+This tool displays the names and content tree of all the DLNA media servers it
+can see.
 
 ## `dlna-media-archive`
 
@@ -35,20 +36,42 @@ Example:
   dlna-media-archive "HDR-2000T*"
 ```
 
+Note: `dlna-mediaserver-walk` can be used to display the names of all the
+visible servers.
+
 ## TODO
 
 `dlna-media-archive` must be more controllable:
 
-1. Specify the local directory to use as the top level.
+1. Specify subtrees of the media server content to archive.
 
-2. Specify subtrees of the media server content to archive.
+2. Specify the local directory to use as the destination instead of using the
+server name.
 
-3. Optional deletion of files which have gone from the server.
+3. Option to delete files which have gone from the server.
+
+4. Insist on media server name and provide option to list names of all servers
+visible.
 
 ## Requirements
 
-Both tools require the Perl packages: `Net::UPnP::ControlPoint` and `Net::UPnP::AV::MediaServer`.
+Both tools require the Perl modules: `Net::UPnP::ControlPoint` and
+`Net::UPnP::AV::MediaServer`.
 
 ## Credits
 
 Much of the code is taken from the documentation for Net::UPnP::AV::MediaServer, by Satoshi Konno
+
+## Notices
+Copyright (c) 2014 Graham R. Cobb.
+This software is distributed under the GPL (see the copyright notices and the LICENSE file).
+
+`dlna-media-archive` is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+`dlna-media-archive` is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
