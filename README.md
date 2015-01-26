@@ -17,11 +17,14 @@ can see.
 This tool downloads all the content from all the DLNA media servers it can see.
 A command line argument can specify a server name to match (using wildcards).
 
-The files are stored in a directory tree within the current directory.
+The files are stored in a directory tree within the current or target directory.
 The top level directory is the name the media server advertises. Subdirectories
 correspond to containers in the content tree.
 
 Files are not redownloaded if they already exist.
+
+The `--delete` option changes the archiving to mirroring as content is removed if
+it is no longer present on the server.
 
 ### Usage
 
