@@ -26,14 +26,20 @@ Files are not redownloaded if they already exist.
 ### Usage
 
 ```
-  dlna-media-archive [<server-name>]
+  dlna-media-archive [options] [<server-name>]
 
   <server-name> - string with optional wildcards (file glob style, not regex) to
                   match against the name advertised by the server
 
+Options:
+
+  -D, --delete			Delete files in destination tree not found on server
+  -d, --destination=<path>	Destination directory for creating archive tree
+  -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
+
 Example:
 
-  dlna-media-archive "HDR-2000T*"
+  dlna-media-archive "HDR-2000T*" --delete --destination /nas/archive/humax/
 ```
 
 Note: `dlna-mediaserver-walk` can be used to display the names of all the
@@ -45,9 +51,7 @@ visible servers.
 
 1. Specify subtrees of the media server content to archive.
 
-2. Option to delete files which have gone from the server.
-
-3. Insist on media server name and provide option to list names of all servers
+2. Insist on media server name and provide option to list names of all servers
 visible.
 
 ## Requirements

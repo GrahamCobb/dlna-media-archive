@@ -12,7 +12,7 @@ use Pod::Usage;
 use Net::UPnP::ControlPoint;
 use Net::UPnP::AV::MediaServer;
 use File::Spec;
-use File::Path qw(make_path);
+use File::Path qw(make_path remove_tree);
 use HTTP::Tiny;
 use Text::Glob qw( match_glob glob_to_regex );
 
@@ -21,6 +21,7 @@ our $VERSION = 0.2;
 my $verbosity = 2;
 my $man = 0;
 my $topDir = "";
+my $delete = 0;
 
 #
 # Logging
@@ -47,6 +48,7 @@ sub msgDebug
 #
 #Getopt::Long::Configure ("bundling");
 GetOptions(
+	   "delete|D" => \$delete,
 	   "destination|d=s" => \$topDir,
 	   "verbose|v:+" => \$verbosity,
 	   "man" => \$man,
@@ -62,6 +64,7 @@ my ($serverName) = @ARGV;
 msgDebug "verbosity = $verbosity";
 msgDebug "serverName = $serverName" if $serverName;
 msgDebug "topDir = $topDir";
+msgDebug "delete = $delete";
 
 =head1 NAME
 
@@ -81,6 +84,7 @@ dlna-media-archive -?|--help|--man|--version
 
  Options:
 
+  -D, --delete			Delete files in destination tree not found on server
   -d, --destination=<path>	Destination directory for creating archive tree
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
 
@@ -160,15 +164,44 @@ if (!$servers) {
 
 sub walk_tree {
     my ($mediaServer, $id, $dir) = @_;
+    my %files;
+
+    # Directory might not exist, but if it does, remember the files if we are doing deletions
+    if ($delete && opendir(my $dh, $dir)) {
+	# Remember files
+	%files = map {$_ =>1} readdir $dh;
+	closedir $dh;
+    }
 
     my @content_list = $mediaServer->getcontentlist(ObjectID => $id );
 
     foreach my $content (@content_list) {
+
+	# Note that we have handled this file
+	delete $files{$content->gettitle()} if $delete;
+
 	if ($content->isitem()) {
 	    archive_content($mediaServer, $dir, $content);
 	} else {
 	    walk_tree($mediaServer, $content->getid(), File::Spec->catdir($dir, $content->gettitle()));
 	}	    
+    }
+
+    if ($delete) {
+	# Delete all the files that have not been handled
+	foreach my $f (keys %files) {
+	    next if $f eq ".";
+	    next if $f eq "..";
+	    my $file = File::Spec->catfile($dir, $f);
+	    if (-d $file) {
+		msgProgress "Deleting directory $file...";
+		remove_tree($file, {result => \my $removed});
+		msgProgress "Deleted $_" for @$removed;
+	    } else {
+		msgProgress "Deleting file $file...";
+		unlink $file or warn "Could not delete $file: $!";
+	    }
+	}
     }
 }    
 
@@ -185,10 +218,10 @@ sub archive_content {
     # Unfortunately, the Media Server does not necessarily handle the If-Modified-Since header
     # so we just do not download if the file already exists. This is safe as HTTP::Tiny::mirror
     # will not have renamed the download to the specified name unless the download was successful.
-    if (! -e $file) {
+    unless (-e $file) {
 	msgProgress "$url => $file";
 	my $http = HTTP::Tiny->new();
 	my $resp = $http->mirror($url, $file);
-	unless ($resp->{success}) {die "Download of $url failed: ", $resp->{status}, $resp->{reason};}
+	$resp->{success} || die "Download of $url failed: ", $resp->{status}, $resp->{reason};
     }
 }
