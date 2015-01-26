@@ -45,12 +45,9 @@ visible servers.
 
 1. Specify subtrees of the media server content to archive.
 
-2. Specify the local directory to use as the destination instead of using the
-server name.
+2. Option to delete files which have gone from the server.
 
-3. Option to delete files which have gone from the server.
-
-4. Insist on media server name and provide option to list names of all servers
+3. Insist on media server name and provide option to list names of all servers
 visible.
 
 ## Requirements

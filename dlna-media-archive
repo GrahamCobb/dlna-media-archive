@@ -20,6 +20,7 @@ our $VERSION = 0.2;
 
 my $verbosity = 2;
 my $man = 0;
+my $topDir = "";
 
 #
 # Logging
@@ -46,6 +47,7 @@ sub msgDebug
 #
 #Getopt::Long::Configure ("bundling");
 GetOptions(
+	   "directory|d=s" => \$topDir,
 	   "verbose|v:+" => \$verbosity,
 	   "man" => \$man,
 	   ) or pod2usage(2);
@@ -59,6 +61,7 @@ my ($serverName) = @ARGV;
 
 msgDebug "verbosity = $verbosity";
 msgDebug "serverName = $serverName" if $serverName;
+msgDebug "topDir = $topDir";
 
 =head1 NAME
 
@@ -78,7 +81,8 @@ dlna-media-archive -?|--help|--man|--version
 
  Options:
 
-  -v, --verbose[=N]	Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
+  -d, --destination=<path>	Destination directory for creating archive tree
+  -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
 
 =head1 OPTIONS
 
@@ -137,13 +141,12 @@ foreach my $dev (@dev_list) {
 	msgInfo "Archiving server ", $dev->getfriendlyname(), "...";
     }
     
+    $servers++;
+
     my $mediaServer = Net::UPnP::AV::MediaServer->new();
     $mediaServer->setdevice($dev);
 
-    my $topDir = File::Spec->catdir(File::Spec->curdir(), $dev->getfriendlyname());
-    walk_tree($mediaServer, 0, $topDir);
-
-    $servers++;
+    walk_tree($mediaServer, 0, File::Spec->catdir($topDir || File::Spec->curdir(), $dev->getfriendlyname()));
 }
 
 if (!$servers) {
