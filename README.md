@@ -67,7 +67,7 @@ Both tools require the Perl modules: `Net::UPnP::ControlPoint` and
 Much of the code is taken from the documentation for Net::UPnP::AV::MediaServer, by Satoshi Konno
 
 ## Notices
-Copyright (c) 2014 Graham R. Cobb.
+Copyright (c) 2014, 2015 Graham R. Cobb.
 This software is distributed under the GPL (see the copyright notices and the LICENSE file).
 
 `dlna-media-archive` is free software; you can redistribute it and/or modify

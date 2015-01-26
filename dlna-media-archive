@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # Copyright (C) 2005 by Satoshi Konno
-# Copyright (C) 2014 Graham R. Cobb
+# Copyright (C) 2014, 2015 Graham R. Cobb
 # Released under GPL V2 -- see LICENSE
 # Much of this code is taken from the documentation for Net::UPnP::AV::MediaServer -- see http://search.cpan.org/~skonno/Net-UPnP-1.4/lib/Net/UPnP/AV/MediaServer.pm
 
