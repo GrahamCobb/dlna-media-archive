@@ -47,7 +47,7 @@ sub msgDebug
 #
 #Getopt::Long::Configure ("bundling");
 GetOptions(
-	   "directory|d=s" => \$topDir,
+	   "destination|d=s" => \$topDir,
 	   "verbose|v:+" => \$verbosity,
 	   "man" => \$man,
 	   ) or pod2usage(2);
