@@ -17,9 +17,9 @@ can see.
 This tool downloads all the content from all the DLNA media servers it can see.
 A command line argument can specify a server name to match (using wildcards).
 
-The files are stored in a directory tree within the current or target directory.
-The top level directory is the name the media server advertises. Subdirectories
-correspond to containers in the content tree.
+The files are stored as a directory tree (default) or all in one directory (--flat).
+If a tree is used, top level directory is the name the media server advertises.
+Subdirectories correspond to containers in the content tree.
 
 Files are not redownloaded if they already exist.
 
@@ -37,7 +37,8 @@ it is no longer present on the server.
 Options:
 
   -D, --delete			Delete files in destination tree not found on server
-  -d, --destination=<path>	Destination directory for creating archive tree
+  -d, --destination=<path>	Destination directory for creating archive, default is current directory
+  -f, --flat			Store all files in one directory, not hierarchically
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
 
 Example:

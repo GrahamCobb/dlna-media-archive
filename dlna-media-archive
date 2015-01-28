@@ -16,12 +16,13 @@ use File::Path qw(make_path remove_tree);
 use HTTP::Tiny;
 use Text::Glob qw( match_glob glob_to_regex );
 
-our $VERSION = 0.3;
+our $VERSION = 0.4;
 
 my $verbosity = 2;
 my $man = 0;
 my $topDir = "";
 my $delete = 0;
+my $flat = 0;
 
 #
 # Logging
@@ -48,6 +49,7 @@ sub msgDebug
 #
 #Getopt::Long::Configure ("bundling");
 GetOptions(
+	   "flat|f" => \$flat,
 	   "delete|D" => \$delete,
 	   "destination|d=s" => \$topDir,
 	   "verbose|v:+" => \$verbosity,
@@ -65,6 +67,7 @@ msgDebug "verbosity = $verbosity";
 msgDebug "serverName = $serverName" if $serverName;
 msgDebug "topDir = $topDir";
 msgDebug "delete = $delete";
+msgDebug "flat = $flat";
 
 =head1 NAME
 
@@ -86,6 +89,7 @@ dlna-media-archive -?|--help|--man|--version
 
   -D, --delete			Delete files in destination tree not found on server
   -d, --destination=<path>	Destination directory for creating archive tree
+  -f, --flat			Store all files in one directory, not hierarchically
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
 
 =head1 OPTIONS
@@ -150,7 +154,9 @@ foreach my $dev (@dev_list) {
     my $mediaServer = Net::UPnP::AV::MediaServer->new();
     $mediaServer->setdevice($dev);
 
-    walk_tree($mediaServer, 0, File::Spec->catdir($topDir || File::Spec->curdir(), $dev->getfriendlyname()));
+    my $dir = $topDir || File::Spec->curdir();
+    $dir = File::Spec->catdir($dir, $dev->getfriendlyname()) unless $flat;
+    walk_tree($mediaServer, 0, $dir);
 }
 
 if (!$servers) {
@@ -166,7 +172,7 @@ sub walk_tree {
     my ($mediaServer, $id, $dir) = @_;
     my %files;
 
-    # Directory might not exist, but if it does, remember the files if we are doing deletions
+    # Directory might not exist, but if it does, remember the files so we can do deletions
     if ($delete && opendir(my $dh, $dir)) {
 	# Remember files
 	%files = map {$_ =>1} readdir $dh;
@@ -176,14 +182,14 @@ sub walk_tree {
     my @content_list = $mediaServer->getcontentlist(ObjectID => $id );
 
     foreach my $content (@content_list) {
-
-	# Note that we have handled this file
-	delete $files{$content->gettitle()} if $delete;
-
 	if ($content->isitem()) {
 	    archive_content($mediaServer, $dir, $content);
+	    delete $files{$content->gettitle()};
 	} else {
-	    walk_tree($mediaServer, $content->getid(), File::Spec->catdir($dir, $content->gettitle()));
+	    walk_tree($mediaServer, $content->getid(), 
+		      ($flat ? $dir : File::Spec->catdir($dir, $content->gettitle()))
+		);
+	    delete $files{$content->gettitle()} unless $flat;
 	}	    
     }
 
