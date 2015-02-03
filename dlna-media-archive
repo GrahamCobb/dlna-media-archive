@@ -11,6 +11,7 @@ use Getopt::Long 2.33 qw(:config gnu_getopt auto_help auto_version);
 use Pod::Usage;
 use Net::UPnP::ControlPoint;
 use Net::UPnP::AV::MediaServer;
+use File::Find;
 use File::Spec;
 use File::Path qw(make_path remove_tree);
 use HTTP::Tiny;
@@ -122,6 +123,12 @@ File glob style wildcards can be included.
 
 Downloads all content from all Humax HDR-2000T servers.
 
+=item B<dlna-media-archive "HDR-2000T*" --delete --flat --destination /nas/my-PVR/>
+
+Maintains mirror of all content from an Humax HDR-2000T server in a single directory.
+Note that using --delete --flat together only works correctly if only a single server
+matches the wildcard.
+
 =back
 
 =cut
@@ -156,7 +163,8 @@ foreach my $dev (@dev_list) {
 
     my $dir = $topDir || File::Spec->curdir();
     $dir = File::Spec->catdir($dir, $dev->getfriendlyname()) unless $flat;
-    walk_tree($mediaServer, 0, $dir);
+    my @file_list = walk_tree($mediaServer, 0, $dir);
+    remove_files($dir, @file_list) if $delete;
 }
 
 if (!$servers) {
@@ -170,45 +178,24 @@ if (!$servers) {
 
 sub walk_tree {
     my ($mediaServer, $id, $dir) = @_;
-    my %files;
 
-    # Directory might not exist, but if it does, remember the files so we can do deletions
-    if ($delete && opendir(my $dh, $dir)) {
-	# Remember files
-	%files = map {$_ =>1} readdir $dh;
-	closedir $dh;
-    }
-
+    my @file_list = ();
     my @content_list = $mediaServer->getcontentlist(ObjectID => $id );
 
     foreach my $content (@content_list) {
 	if ($content->isitem()) {
 	    archive_content($mediaServer, $dir, $content);
-	    delete $files{$content->gettitle()};
+	    push @file_list, File::Spec->catdir($dir, $content->gettitle());
 	} else {
-	    walk_tree($mediaServer, $content->getid(), 
-		      ($flat ? $dir : File::Spec->catdir($dir, $content->gettitle()))
+	    push @file_list, walk_tree($mediaServer,
+				       $content->getid(), 
+				       ($flat ? $dir : File::Spec->catdir($dir, $content->gettitle()))
 		);
-	    delete $files{$content->gettitle()} unless $flat;
+	    push @file_list, File::Spec->catdir($dir, $content->gettitle()) unless $flat;
 	}	    
     }
 
-    if ($delete) {
-	# Delete all the files that have not been handled
-	foreach my $f (keys %files) {
-	    next if $f eq ".";
-	    next if $f eq "..";
-	    my $file = File::Spec->catfile($dir, $f);
-	    if (-d $file) {
-		msgProgress "Deleting directory $file...";
-		remove_tree($file, {result => \my $removed});
-		msgProgress "Deleted $_" for @$removed;
-	    } else {
-		msgProgress "Deleting file $file...";
-		unlink $file or warn "Could not delete $file: $!";
-	    }
-	}
-    }
+    return @file_list;
 }    
 
 sub archive_content {
@@ -230,4 +217,28 @@ sub archive_content {
 	my $resp = $http->mirror($url, $file);
 	$resp->{success} || die "Download of $url failed: ", $resp->{status}, $resp->{reason};
     }
+}
+
+sub remove_files {
+    my ($dir, @files_list) = @_;
+    msgDebug "remove_files $dir";
+
+    # Create a hash to make checks faster
+    my %files = map {$_ =>1} @files_list;
+
+    # Delete all the files in $dir that have not been handled
+    finddepth(
+	sub {
+	    return if $_ eq ".";
+	    return if $_ eq "..";
+	    return if $files{$File::Find::name};
+	    if (-d $File::Find::name) {
+		msgProgress "Deleting directory $File::Find::name...";
+		rmdir $File::Find::name or warn "Could not delete directory $File::Find::name: $!";
+	    } else {
+		msgProgress "Deleting file $File::Find::name...";
+		unlink $File::Find::name or warn "Could not delete file $File::Find::name: $!";
+	    }
+	},
+	$dir);
 }
