@@ -24,6 +24,7 @@ my $man = 0;
 my $topDir = "";
 my $delete = 0;
 my $flat = 0;
+my $dryRun = 0;
 
 #
 # Logging
@@ -53,6 +54,7 @@ GetOptions(
 	   "flat|f" => \$flat,
 	   "delete|D" => \$delete,
 	   "destination|d=s" => \$topDir,
+	   "dry-run|n" => \$dryRun,
 	   "verbose|v:+" => \$verbosity,
 	   "man" => \$man,
 	   ) or pod2usage(2);
@@ -63,12 +65,15 @@ if ($man) {
 }
 
 my ($serverName) = @ARGV;
+my $dryRunText = $dryRun ? "(dry run) " : "";
 
 msgDebug "verbosity = $verbosity";
 msgDebug "serverName = $serverName" if $serverName;
 msgDebug "topDir = $topDir";
 msgDebug "delete = $delete";
 msgDebug "flat = $flat";
+msgDebug "dryRun = $dryRun";
+msgDebug "dryRunText = $dryRunText";
 
 =head1 NAME
 
@@ -90,6 +95,7 @@ dlna-media-archive -?|--help|--man|--version
 
   -D, --delete			Delete files in destination tree not found on server
   -d, --destination=<path>	Destination directory for creating archive tree
+  -n, --dry-run			Do not actually download content or delete files, just print messages
   -f, --flat			Store all files in one directory, not hierarchically
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
 
@@ -153,7 +159,7 @@ foreach my $dev (@dev_list) {
 	    next;
 	}
     } else {
-	msgInfo "Archiving server ", $dev->getfriendlyname(), "...";
+	msgInfo "${dryRunText}Archiving server ", $dev->getfriendlyname(), "...";
     }
     
     $servers++;
@@ -212,10 +218,12 @@ sub archive_content {
     # so we just do not download if the file already exists. This is safe as HTTP::Tiny::mirror
     # will not have renamed the download to the specified name unless the download was successful.
     unless (-e $file) {
-	msgProgress "$url => $file";
-	my $http = HTTP::Tiny->new();
-	my $resp = $http->mirror($url, $file);
-	$resp->{success} || die "Download of $url failed: ", $resp->{status}, $resp->{reason};
+	msgProgress "${dryRunText}$url => $file";
+	unless ($dryRun) {
+	    my $http = HTTP::Tiny->new();
+	    my $resp = $http->mirror($url, $file);
+	    $resp->{success} || die "Download of $url failed: ", $resp->{status}, $resp->{reason};
+	}
     }
 }
 
@@ -233,11 +241,11 @@ sub remove_files {
 	    return if $_ eq "..";
 	    return if $files{$File::Find::name};
 	    if (-d $File::Find::name) {
-		msgProgress "Deleting directory $File::Find::name...";
-		rmdir $File::Find::name or warn "Could not delete directory $File::Find::name: $!";
+		msgProgress "${dryRunText}Deleting directory $File::Find::name...";
+		rmdir $File::Find::name or warn "Could not delete directory $File::Find::name: $!" unless $dryRun;
 	    } else {
-		msgProgress "Deleting file $File::Find::name...";
-		unlink $File::Find::name or warn "Could not delete file $File::Find::name: $!";
+		msgProgress "${dryRunText}Deleting file $File::Find::name...";
+		unlink $File::Find::name or warn "Could not delete file $File::Find::name: $!" unless $dryRun;
 	    }
 	},
 	$dir);
