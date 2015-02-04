@@ -222,7 +222,7 @@ sub archive_content {
 	unless ($dryRun) {
 	    my $http = HTTP::Tiny->new();
 	    my $resp = $http->mirror($url, $file);
-	    $resp->{success} || die "Download of $url failed: ", $resp->{status}, $resp->{reason};
+	    $resp->{success} || die "Download of $url failed: ", $resp->{status}, " ", $resp->{reason};
 	}
     }
 }
