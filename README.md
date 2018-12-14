@@ -1,11 +1,11 @@
 # dlna-media-archive
 
-Archive material from DLNA media servers
+Archive and access material from DLNA media servers
 
 These tools are for use with any DLNA media server, accessible directly on
 the same LAN or indirectly using `ssdp-fake`.
 
-There are two tools: `dlna-mediaserver-walk` and `dlna-media-archive`.
+There are three tools: `dlna-mediaserver-walk`, `dlna-media-archive` and `dlna-playlist-play`.
 
 ## `dlna-mediaserver-walk`
 
@@ -49,6 +49,54 @@ Example:
 Note: `dlna-mediaserver-walk` can be used to display the names of all the
 visible servers.
 
+## `dlna-playlist-play`
+
+This tool is a simple media player which plays a container (and its nested containers) in the order specified by the server.
+It is most useful to play a playlist stored on the server as a container, although it can play a single item or album if desired.
+
+In normal use, it plays the files by passing the URL to a local command (defaults to `mplayer`).
+Alternatively, it can create a playlist of the URLs of the media files, which can later be passed to another
+media player (for example, `vlc`).
+
+The tool can keep track of where in the playlist it has got to so that playing can be resumed later.
+This is only on a per-track basis and playing restarts at the start of the track which was being played
+when it was stopped.
+
+The tool is mainly intended for playing very long playlists (hundreds or thousands of tracks),
+normally intended to be played over multiple days or even longer, and which are likely to be interrupted
+for many reasons (network connection loss, system shutdown, etc).
+
+### Usage
+```
+  dlna-playlist-play [options] <server-name> <object-id>|<list-name>|<list-path>
+
+  dlna-playlist-play -?|--help|--man|--version
+
+Commands:
+
+  -?, --help			brief help message
+  --man 			full documentation
+  --version			script version
+
+Options:
+
+  -e, --execute <command>       Command to execute. The URL for the content will be provided as the only argument.
+  -L, --log <log-file>          Log which tracks were played when.
+  -n, --dry-run			Do not actually play files or create playlist, just print messages
+  -o, --output <file>           Do not execute commands, write the commands (or playlist) to the named file
+  -p, --playlist                Do not issue commands, just write the URLs as playlist.
+  -R, --resume[=<file>]         Restart playing with the item interrupted last time.
+  -S, --save[=<file>]           Save the id of the object being played to allow resume next time.
+  -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
+
+Examples:
+
+  dlna-playlist-play Gerbera christmas-playlist.m3u --save --resume
+
+  dlna-playlist-play "Nas*" /Videos --playlist --output all-my-videos.m3u
+
+```
+
 ## TODO
 
 `dlna-media-archive` must be more controllable:
@@ -60,7 +108,7 @@ visible.
 
 ## Requirements
 
-Both tools require the Perl modules: `Net::UPnP::ControlPoint` and
+All tools require the Perl modules: `Net::UPnP::ControlPoint` and
 `Net::UPnP::AV::MediaServer`.
 
 ## Credits
@@ -68,7 +116,7 @@ Both tools require the Perl modules: `Net::UPnP::ControlPoint` and
 Much of the code is taken from the documentation for Net::UPnP::AV::MediaServer, by Satoshi Konno
 
 ## Notices
-Copyright (c) 2014, 2015 Graham R. Cobb.
+Copyright (c) 2014-2018 Graham R. Cobb.
 This software is distributed under the GPL (see the copyright notices and the LICENSE file).
 
 `dlna-media-archive` is free software; you can redistribute it and/or modify
