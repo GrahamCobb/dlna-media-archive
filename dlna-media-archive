@@ -14,6 +14,7 @@ use Net::UPnP::AV::MediaServer;
 use File::Find;
 use File::Spec;
 use File::Path qw(make_path remove_tree);
+use File::Copy;
 use HTTP::Tiny;
 use Text::Glob qw( match_glob glob_to_regex );
 
@@ -22,6 +23,7 @@ our $VERSION = 0.4;
 my $verbosity = 2;
 my $man = 0;
 my $topDir = "";
+my $moveDir = "";
 my $delete = 0;
 my $flat = 0;
 my $dryRun = 0;
@@ -56,6 +58,7 @@ GetOptions(
 	   "flat|f" => \$flat,
 	   "delete|D" => \$delete,
 	   "destination|d=s" => \$topDir,
+	   "move|m=s" => \$moveDir,
 	   "dry-run|n" => \$dryRun,
 	   "verbose|v:+" => \$verbosity,
 	   "man" => \$man,
@@ -65,6 +68,11 @@ if ($man) {
     pod2usage(-verbose => 2);
     exit;
 }
+if ($moveDir && $delete) {
+    msgError "Cannot specify --delete and --move";
+    pod2usage(-verbose => 2);
+    exit 99;
+}
 
 my ($serverName) = @ARGV;
 my $dryRunText = $dryRun ? "(dry run) " : "";
@@ -73,6 +81,7 @@ $Net::UPnP::DEBUG=1 if $verbosity >= 3;
 msgDebug "verbosity = $verbosity";
 msgDebug "serverName = $serverName" if $serverName;
 msgDebug "topDir = $topDir";
+msgDebug "moveDir = $moveDir";
 msgDebug "delete = $delete";
 msgDebug "flat = $flat";
 msgDebug "dryRun = $dryRun";
@@ -96,8 +105,9 @@ dlna-media-archive -?|--help|--man|--version
 
  Options:
 
-  -D, --delete			Delete files in destination tree not found on server
+  -D, --delete			Delete files in destination tree not found on server (conflicts with --move)
   -d, --destination=<path>	Destination directory for creating archive tree
+  -m, --move=<path>		Move files in destination tree not found on server (conflicts with --delete)
   -n, --dry-run			Do not actually download content or delete files, just print messages
   -f, --flat			Store all files in one directory, not hierarchically
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
@@ -173,7 +183,7 @@ foreach my $dev (@dev_list) {
     my $dir = $topDir || File::Spec->curdir();
     $dir = File::Spec->catdir($dir, $dev->getfriendlyname()) unless $flat;
     my @file_list = walk_tree($mediaServer, 0, $dir);
-    remove_files($dir, @file_list) if $delete;
+    remove_files($dir, $moveDir, @file_list) if ($delete || $moveDir) ;
 }
 
 if (!$servers) {
@@ -238,24 +248,33 @@ sub archive_content {
 }
 
 sub remove_files {
-    my ($dir, @files_list) = @_;
+    my ($dir, $to_dir, @files_list) = @_;
     msgDebug "remove_files $dir";
 
     # Create a hash to make checks faster
     my %files = map {$_ =>1} @files_list;
 
-    # Delete all the files in $dir that have not been handled
+    # Delete/Move all the files in $dir that have not been handled
     finddepth(
 	sub {
 	    return if $_ eq ".";
 	    return if $_ eq "..";
 	    return if $files{$File::Find::name};
 	    if (-d $File::Find::name) {
-		msgProgress "${dryRunText}Deleting directory $File::Find::name...";
-		rmdir $File::Find::name or warn "Could not delete directory $File::Find::name: $!" unless $dryRun;
+		if ($to_dir) {
+		    msgProgress "${dryRunText}Skipping moving directory $File::Find::name";
+		} else {
+		    msgProgress "${dryRunText}Deleting directory $File::Find::name...";
+		    rmdir $File::Find::name or warn "Could not delete directory $File::Find::name: $!" unless $dryRun;
+		}
 	    } else {
-		msgProgress "${dryRunText}Deleting file $File::Find::name...";
-		unlink $File::Find::name or warn "Could not delete file $File::Find::name: $!" unless $dryRun;
+		if ($to_dir) {
+		    msgProgress "${dryRunText}Moving file $File::Find::name to $to_dir...";
+		    move($File::Find::name, $to_dir) or warn "Could not delete file $File::Find::name: $!" unless $dryRun;
+		} else {
+		    msgProgress "${dryRunText}Deleting file $File::Find::name...";
+		    unlink $File::Find::name or warn "Could not delete file $File::Find::name: $!" unless $dryRun;
+		}
 	    }
 	},
 	$dir);
