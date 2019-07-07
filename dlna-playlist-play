@@ -13,6 +13,7 @@ use Net::UPnP::ControlPoint;
 use Net::UPnP::AV::MediaServer;
 use Text::Glob qw( match_glob glob_to_regex );
 use DateTime;
+use JSON;
 
 our $VERSION = 0.4;
 
@@ -22,7 +23,8 @@ my $dryRun = 0;
 my $execute;
 my $output;
 my $outputfh;
-my $playlist;
+my $playlist = 0;
+my $extendedPlaylist = 0;
 my $listObjId;
 my $saving = 0;
 my $defaultSaveFile = ".dlna-playlist-play.save";
@@ -66,6 +68,7 @@ GetOptions(
     "log|L=s" => \$logFile,
     "output|o=s" => \$output,
     "playlist|p" => \$playlist,
+    "extended-playlist|P" => \$extendedPlaylist,
     "save|S:s" => \$saveFile,
     "resume|R:s" => \$resumeFile,
 	   "dry-run|n" => \$dryRun,
@@ -77,13 +80,13 @@ if ($man) {
     pod2usage(-verbose => 2);
     exit;
 }
-if ($execute && $playlist) {
-    msgError "Cannot specify --execute and --playlist";
+if ($execute && ($playlist || $extendedPlaylist)) {
+    msgError "Cannot specify --execute and --playlist or --extended-playlist";
     pod2usage(-verbose => 2);
     exit;
 }
 
-$execute = $execute || "mplayer" unless $playlist;
+$execute = $execute || "mplayer" unless $playlist || $extendedPlaylist;
 
 if ($output) {
     open($outputfh, "> :encoding(UTF-8)", $output)
@@ -126,7 +129,8 @@ msgDebug "serverName = $serverName" if $serverName;
 msgDebug "listName = $listName" if $listName;
 msgDebug "listObjId = $listObjId" if $listObjId;
 msgDebug "execute = $execute" if $execute;
-msgDebug "playlist = $playlist" if $playlist;
+msgDebug "playlist = $playlist";
+msgDebug "extendedPlaylist = $extendedPlaylist";
 msgDebug "output = $output" if $output;
 msgDebug "verbosity = $verbosity";
 msgDebug "serverName = $serverName" if $serverName;
@@ -161,6 +165,7 @@ dlna-playlist-play -?|--help|--man|--version
   -n, --dry-run			Do not actually play files or create playlist, just print messages
   -o, --output <file>           Do not execute commands, write the commands (or playlist) to the named file
   -p, --playlist                Do not issue commands, just write the URLs as playlist.
+  -P, --extended-playlist       Do not issue commands, write the URLs as an extended playlist.
   -R, --resume[=<file>]         Restart playing with the item interrupted last time.
   -S, --save[=<file>]           Save the id of the object being played to allow resume next time.
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
@@ -177,8 +182,8 @@ Do not actually play files or create a playlist. The tree will be walked and pro
 
 Specify the command to execute to play the content. The URL for the content will be provided as the only argument.
 
-It is an error to specify both --execute and --playlist. If neither --execute nor --playlist are specified then the default
-command is 'mplayer'.
+It is an error to specify either B<--playlist> or B<--extended-playlist> with B<--execute>. If none of B<--execute>, B<--playlist> or B<--extended-playlist> are specified then the default
+action is B<--execute mplayer>.
 
 =item B<--help>
 
@@ -203,9 +208,35 @@ to stdout, along with any progress messages.
 
 Do not issue commands, but generate a playlist with the URLs of the content.
 
-The output file for the playlist should be specified using --output.
+The output file for the playlist should be specified using B<--output>.
 
-It is an error to specify both --playlist and --execute.
+It is an error to specify both B<--playlist> and B<--execute>.
+
+=item B<--extended-playlist>
+
+Do not issue commands, but generate an extended playlist with the URLs of the content.
+A I<dlna-playlist-play extended playlist> adds additional information to the playlist
+to record information about the content object.
+This consists of lines prefixed with B<#DPPEP-Item:> and then containing JSON information.
+The information provided is intended to be enough to allow I<dlna-playlist-play> to later play the
+content without using UPNP but with all features, such as save and resume, working.
+
+The output file for the playlist should be specified using B<--output>.
+
+It is an error to specify both B<--extended-playlist> and B<--execute>.
+
+=item B<--save>
+
+Save the object ID of the track currently being played in a file, for use with B<--resume>.
+The save file defaults to I<.dlna-playlist-play.save> in the current directory.
+
+When playback completes, the save file is deleted.
+
+=item B<--resume>
+
+Read the specified save file and resume playback with the specified object ID.
+The save file defaults to I<.dlna-playlist-play.save> in the current directory.
+If the object ID is not found, an error is reported.
 
 =back
 
@@ -303,7 +334,11 @@ sub play_tree {
 
     foreach my $content (@content_list) {
 	if ($content->isitem()) {
-	    play_content($mediaServer, $content);
+	    play_content($mediaServer,
+			 id => $content->getid(),
+			 url => $content->geturl(),
+			 title => $content->gettitle(),
+		);
 	} else {
 	    play_tree($mediaServer, $content->getid());
 	    print $logfh "${dryRunText}".DateTime->now." finished playing album ".$content->gettitle()." (".$content->getid().")\n" if $logging;
@@ -313,34 +348,41 @@ sub play_tree {
 }
 
 sub play_content {
-    my ($mediaServer, $content) = @_;
+    my ($mediaServer, %details) = @_;
 
     if ($resuming) {
-	if ($resumeAt != $content->getid()) {
-	    msgProgress "Resume: skipping ".$content->geturl()." (".$content->getid().")";
+	if ($resumeAt != $details{id}) {
+	    msgProgress "Resume: skipping ".$details{url}." (".$details{id}.")";
 	    return;
 	} else {
-	    msgProgress "Resuming at ".$content->getid();
+	    msgProgress "Resuming at ".$details{id};
 	    $resuming = 0;
 	}
     }
 
     if ($execute) {
-	msgProgress "${dryRunText}${execute} ".$content->geturl()." (".$content->getid().")";
+	msgProgress "${dryRunText}${execute} ".$details{url}." (".$details{id}.")";
 	if (! $output) {
-	    save_id ($content->getid()) if $saving;
-	    system($execute." ".$content->geturl()) unless $dryRun;
+	    save_id ($details{id}) if $saving;
+	    system($execute." ".$details{url}) unless $dryRun;
 	} else {
-	    print $outputfh $execute." ".$content->geturl()."\n" unless $dryRun;
+	    print $outputfh $execute." ".$details{url}."\n" unless $dryRun;
 	}
     }
 
     if ($playlist) {
-	msgProgress "${dryRunText}".$content->geturl()." (".$content->getid().")";
-	print { $output ? $outputfh : *STDOUT } $content->geturl()."\n" unless $dryRun;
+	msgProgress "${dryRunText}".$details{url}." (".$details{id}.")";
+	print { $output ? $outputfh : *STDOUT } $details{url}."\n" unless $dryRun;
     }
 
-    print $logfh "${dryRunText}".DateTime->now." finished playing ".$content->gettitle()." (".$content->getid().")\n" if $logging;
+    if ($extendedPlaylist) {
+	msgProgress "${dryRunText}".$details{url}." (".$details{id}.")";
+
+	print { $output ? $outputfh : *STDOUT } "#DPPEP-Item: ".encode_json(\%details)."\n" unless $dryRun;
+	print { $output ? $outputfh : *STDOUT } $details{url}."\n" unless $dryRun;
+    }
+
+    print $logfh "${dryRunText}".DateTime->now." finished playing ".$details{title}." (".$details{id}.")\n" if $logging;
 }
 
 sub save_id {
