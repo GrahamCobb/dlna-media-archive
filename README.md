@@ -108,6 +108,84 @@ and exits when the state goes to "STOPPED".
 
 ### Usage
 ```
+NAME
+    dlna-play - Play a single URL on a DLNA media renderer
+
+SYNOPSIS
+    dlna-play [options] [<renderer-name>] <url>
+
+    dlna-play -?|--help|--man|--version
+
+     Commands:
+
+      -?, --help                    brief help message
+      --man                         full documentation
+      --version                     script version
+
+     Options:
+
+      -w, --wait=N                  Seconds to wait for renderer to be found (default = 3)
+      -l, --location=<url>          URL providing description XML for a renderer to include in the search
+      -n, --dry-run                 Do not actually play file, just monitor
+      -v, --verbose[=N]             Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
+
+OPTIONS
+    --wait  Number of seconds to wait searching for all renderers visible on
+            LAN. Specifying 0 disables the LAN search meaning only renderers
+            specified using --location will be considered.
+
+    --location
+            URL of the "description XML" for a renderer to include in the
+            search. This is used to access renderers which are not visible
+            on the LAN (typically accessed over a wide area network).
+
+            The value to be provided is the same as the LOCATION: field in
+            the DLNA announcement messages the renderer transmits on its own
+            LAN.
+
+            For example:
+
+              --location http://192.168.111.222:49152/uuid-12345678-abcd-0987-ffff-1234567890abc/description.xml
+
+            If local renderers should not also be considered, specify
+            '--wait 0' as well. See also the description below about how
+            renderer names interact with --location.
+
+    --dry-run
+            Do not actually play file.
+
+    --help  Print a brief help message and exits.
+
+    --man   Prints the manual page and exits.
+
+DESCRIPTION
+    dlna-play plays a single content file on a DLNA UPNP AV media renderer
+    and waits for it to complete. It is designed to be used much like
+    "mplayer" is used.
+
+    renderer-name specifies the name of the media renderer (the name is
+    advertised by the renderer itself). File glob style wildcards can be
+    used. If the renderer name is omitted, the first renderer found will be
+    used.
+
+    Note that renderer name matching is still checked even if --location is
+    specified. In most cases, when --location is used the renderer name
+    should be omitted and --wait 0 specified to avoid finding a local
+    renderer
+
+    url is the file to play.
+
+EXAMPLES
+    dlna-play "HDR-2000T*" <url>
+            Play the url on a Humax HDR-2000T.
+
+    dlna-play <url>
+            Play the url on any renderer we can see on the network.
+
+    dlna-play --wait 0 --location=http://192.168.111.222:4321/desc <url>
+            Play the url on the renderer described at the specified location
+            whatever name it may be advertising.
+
 ```
 
 ## TODO

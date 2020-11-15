@@ -62,9 +62,16 @@ if ($man) {
     exit;
 }
 
-my ($rendererName, $url) = @ARGV;
-if (! $url) {
-    msgError "URL not specified";
+# Note: we want renderer name to be optional (allowing playing on any renderer found)
+# but we need the URL to be at the end of the command to allow using from 'dlna-playlist-play'
+# so 1 arg is interpreted as the URL
+my ($rendererName, $url);
+if (scalar(@ARGV) == 1) {
+    ($url) = @ARGV;
+} elsif (scalar(@ARGV) == 2) {
+    ($rendererName, $url) = @ARGV;
+} else {
+    msgError "one or two arguments must be specified";
     pod2usage(2);
     exit 1;
 }
@@ -85,7 +92,7 @@ dlna-play - Play a single URL on a DLNA media renderer
 
 =head1 SYNOPSIS
 
-dlna-play [options] <renderer-name> <url>
+dlna-play [options] [<renderer-name>] <url>
 
 dlna-play -?|--help|--man|--version
 
@@ -108,7 +115,8 @@ dlna-play -?|--help|--man|--version
 
 =item B<--wait>
 
-Number of seconds to wait searching for all renderers visible on LAN.
+Number of seconds to wait searching for all renderers visible on LAN. Specifying 0 disables the LAN search
+meaning only renderers specified using --location will be considered.
 
 =item B<--location>
 
@@ -122,6 +130,9 @@ DLNA announcement messages the renderer transmits on its own LAN.
 For example:
 
   --location http://192.168.111.222:49152/uuid-12345678-abcd-0987-ffff-1234567890abc/description.xml
+
+If local renderers should B<not> also be considered, specify '--wait 0' as well.
+See also the description below about how renderer names interact with --location.
 
 =item B<--dry-run>
 
@@ -142,10 +153,13 @@ Prints the manual page and exits.
 B<dlna-play> plays a single content file on a DLNA UPNP AV media renderer and waits for it to complete.
 It is designed to be used much like "mplayer" is used.
 
-B<url> is the file to play.
+B<renderer-name> specifies the name of the media renderer (the name is advertised by the renderer itself).
+File glob style wildcards can be used. If the renderer name is omitted, the first renderer found will be used.
 
-B<renderer-name> specifies the name of the renderer (as advertised by the renderer).
-File glob style wildcards can be included.
+Note that renderer name matching is still checked even if --location is specified. In most cases, when
+--location is used the renderer name should be omitted and --wait 0 specified to avoid finding a local renderer
+
+B<url> is the file to play.
 
 =head1 EXAMPLES
 
@@ -154,6 +168,15 @@ File glob style wildcards can be included.
 =item B<dlna-play "HDR-2000T*" <url>>
 
 Play the url on a Humax HDR-2000T.
+
+=item B<dlna-play <url>>
+
+Play the url on any renderer we can see on the network.
+
+=item B<dlna-play --wait 0 --location=http://192.168.111.222:4321/desc <url>>
+
+Play the url on the renderer described at the specified location whatever
+name it may be advertising.
 
 =back
 
@@ -195,7 +218,7 @@ my $control_point = Net::UPnP::ControlPoint->new();
 
 # Search for renderers
 my @dev_list;
-@dev_list = $control_point->search(st =>'upnp:rootdevice', mx => $wait_time);
+@dev_list = $control_point->search(st =>'upnp:rootdevice', mx => $wait_time) if $wait_time;
 # Add manual renderer info
 my $manual_dev = create_dev_from_location($location) if $location;
 push (@dev_list, $manual_dev) if $manual_dev;
@@ -204,6 +227,7 @@ my $renderer = Net::UPnP::AV::MediaRenderer->new();
 foreach my $dev (@dev_list) {
     msgDebug "Device ", $dev->getfriendlyname(), " - ", $dev->getdevicetype(), " (", $dev->getlocation(), ")";
 
+    # Ignore devices that do not provide the AVTransport service
     next unless $dev->getservicebyname($Net::UPnP::AV::MediaRenderer::AVTRNSPORT_SERVICE_TYPE);
     
     msgProgress "Found renderer ", $dev->getfriendlyname();
