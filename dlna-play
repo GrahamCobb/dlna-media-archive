@@ -22,6 +22,7 @@ my $man = 0;
 my $dryRun = 0;
 my $wait_time = 3;
 my $location;
+my $stop;
 
 #
 # Logging
@@ -55,6 +56,7 @@ GetOptions(
     "man" => \$man,
     "wait|w:s" => \$wait_time,
     "location|l:s" => \$location,
+    "stop|S" => \$stop,
     ) or pod2usage(2);
 msgDebug "man = $man";
 if ($man) {
@@ -70,8 +72,10 @@ if (scalar(@ARGV) == 1) {
     ($url) = @ARGV;
 } elsif (scalar(@ARGV) == 2) {
     ($rendererName, $url) = @ARGV;
+} elsif ($stop) {
+    $url = '';
 } else {
-    msgError "one or two arguments must be specified";
+    msgError "one or two arguments, or --stop, must be specified";
     pod2usage(2);
     exit 1;
 }
@@ -85,6 +89,7 @@ msgDebug "verbosity = $verbosity";
 msgDebug "dryRun = $dryRun";
 msgDebug "wait_time = $wait_time";
 msgDebug "location = $location";
+msgDebug "stop = $stop";
 
 =head1 NAME
 
@@ -106,6 +111,7 @@ dlna-play -?|--help|--man|--version
 
   -w, --wait=N			Seconds to wait for renderer to be found (default = 3)
   -l, --location=<url>		URL providing description XML for a renderer to include in the search
+  -S, --stop			Stop playback but do not start another track
   -n, --dry-run			Do not actually play file, just monitor
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
 
@@ -133,6 +139,12 @@ For example:
 
 If local renderers should B<not> also be considered, specify '--wait 0' as well.
 See also the description below about how renderer names interact with --location.
+
+=item B<--stop>
+
+Stop playback of the current track but do not start another. Note that any track URL is ignored:
+this is to make it easy to recall an earlier playback command but add "--stop" to just stop
+the playback.
 
 =item B<--dry-run>
 
@@ -266,6 +278,12 @@ $didl =~ s/'"'"'/\&apos;/g;
 # Play
 unless ($dryRun) {
     $renderer->stop(); # Ignore errors
+
+    # If --stop was specified, do not start another track
+    if ($stop) {
+        msgInfo "Playback stopped";
+        exit;
+    }
 
     $action_result = $renderer->setAVTransportURI(
 	InstanceID => $instanceID,

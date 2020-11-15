@@ -126,6 +126,7 @@ SYNOPSIS
 
       -w, --wait=N                  Seconds to wait for renderer to be found (default = 3)
       -l, --location=<url>          URL providing description XML for a renderer to include in the search
+      -S, --stop                    Stop playback but do not start another track
       -n, --dry-run                 Do not actually play file, just monitor
       -v, --verbose[=N]             Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
 
@@ -150,6 +151,11 @@ OPTIONS
             If local renderers should not also be considered, specify
             '--wait 0' as well. See also the description below about how
             renderer names interact with --location.
+
+    --stop  Stop playback of the current track but do not start another.
+            Note that any track URL is ignored: this is to make it easy to
+            recall an earlier playback command but add "--stop" to just stop
+            the playback.
 
     --dry-run
             Do not actually play file.
