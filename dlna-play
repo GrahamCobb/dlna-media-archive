@@ -1,0 +1,292 @@
+#!/usr/bin/perl
+# Copyright (C) 2020 Graham R. Cobb
+# Released under GPL V2 -- see LICENSE
+# Note: parts of this code are derived from dlna-playlist-play (Graham Cobb)
+# and from the documentation for Net::UPnP::AV::MediaServer (Satoshi Konno)
+
+use strict;
+use warnings;
+
+use Getopt::Long 2.33 qw(:config gnu_getopt auto_help auto_version);
+use Pod::Usage;
+use Net::UPnP::ControlPoint;
+use Net::UPnP::AV::MediaRenderer;
+use Text::Glob qw( match_glob glob_to_regex );
+use Data::Dumper;
+use XML::Simple;
+
+our $VERSION = 0.1;
+
+my $verbosity = 2;
+my $man = 0;
+my $dryRun = 0;
+my $wait_time = 3;
+my $location;
+
+#
+# Logging
+#
+sub msgError
+{
+    print @_,"\n";
+}
+sub msgInfo
+{
+    print @_,"\n" if $verbosity >= 1;
+}
+sub msgProgress
+{
+    print @_,"\n" if $verbosity >= 2;
+}
+sub msgDebug
+{
+    print @_,"\n" if $verbosity >= 3;
+}
+# Autoflush output, otherwise errors appear in wrong place relative to logging
+$| = 1;
+
+#
+# Option processing
+#
+#Getopt::Long::Configure ("bundling");
+GetOptions(
+    "dry-run|n" => \$dryRun,
+    "verbose|v:+" => \$verbosity,
+    "man" => \$man,
+    "wait|w:s" => \$wait_time,
+    "location|l:s" => \$location,
+    ) or pod2usage(2);
+msgDebug "man = $man";
+if ($man) {
+    pod2usage(-verbose => 2);
+    exit;
+}
+
+my ($rendererName, $url) = @ARGV;
+if (! $url) {
+    msgError "URL not specified";
+    pod2usage(2);
+    exit 1;
+}
+$rendererName = $rendererName || '*';
+my $dryRunText = $dryRun ? "(dry run) " : "";
+$Net::UPnP::DEBUG=1 if $verbosity >= 3;
+
+msgDebug "url = $url";
+msgDebug "rendererName = $rendererName";
+msgDebug "verbosity = $verbosity";
+msgDebug "dryRun = $dryRun";
+msgDebug "wait_time = $wait_time";
+msgDebug "location = $location";
+
+=head1 NAME
+
+dlna-play - Play a single URL on a DLNA media renderer
+
+=head1 SYNOPSIS
+
+dlna-play [options] <renderer-name> <url>
+
+dlna-play -?|--help|--man|--version
+
+ Commands:
+
+  -?, --help			brief help message
+  --man 			full documentation
+  --version			script version
+
+ Options:
+
+  -w, --wait=N			Seconds to wait for renderer to be found (default = 3)
+  -l, --location=<url>		URL providing description XML for a renderer to include in the search
+  -n, --dry-run			Do not actually play file, just monitor
+  -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--wait>
+
+Number of seconds to wait searching for all renderers visible on LAN.
+
+=item B<--location>
+
+URL of the "description XML" for a renderer to include in the search.
+This is used to access renderers which are not visible on the LAN
+(typically accessed over a wide area network).
+
+The value to be provided is the same as the LOCATION: field in the
+DLNA announcement messages the renderer transmits on its own LAN.
+
+For example:
+
+  --location http://192.168.111.222:49152/uuid-12345678-abcd-0987-ffff-1234567890abc/description.xml
+
+=item B<--dry-run>
+
+Do not actually play file.
+
+=item B<--help>
+
+Print a brief help message and exits.
+
+=item B<--man>
+
+Prints the manual page and exits.
+
+=back
+
+=head1 DESCRIPTION
+
+B<dlna-play> plays a single content file on a DLNA UPNP AV media renderer and waits for it to complete.
+It is designed to be used much like "mplayer" is used.
+
+B<url> is the file to play.
+
+B<renderer-name> specifies the name of the renderer (as advertised by the renderer).
+File glob style wildcards can be included.
+
+=head1 EXAMPLES
+
+=over 8
+
+=item B<dlna-play "HDR-2000T*" <url>>
+
+Play the url on a Humax HDR-2000T.
+
+=back
+
+=cut
+
+sub create_dev_from_location {
+# Code taken from ControlPoint.pm (https://metacpan.org/source/SKONNO/Net-UPnP-1.4.6/lib%2FNet%2FUPnP%2FControlPoint.pm)
+    my ($dev_location) = @_;
+    unless ($dev_location =~ m{http://([0-9a-z.-]+)(?::(\d+))?/(.*)}i) {
+        die "$0: bad dev_location: $dev_location\n";
+    }
+    my $dev_addr = $1;
+    my $dev_port = $2 || 80;
+    my $dev_path = '/' . $3;
+    msgDebug "dev_addr=$dev_addr dev_port=$dev_port dev_path=$dev_path\n";
+
+    my $http_req = Net::UPnP::HTTP->new();
+    my $post_res = $http_req->post($dev_addr, $dev_port, "GET", $dev_path, "", "");
+    unless ($post_res->getstatuscode() == 200) {
+	die "$0: can't fetch description from $dev_location: ".$post_res->getstatuscode();
+    }
+    msgDebug $post_res->getstatus();
+    msgDebug $post_res->getheader();
+    msgDebug $post_res->getcontent();
+    
+    my $post_content = $post_res->getcontent();
+ 
+    my $dev = Net::UPnP::Device->new();
+    $dev->setssdp("LOCATION: $dev_location\r\n");
+    $dev->setdescription($post_content);
+         
+    #msgDebug "ssdp = $ssdp_res_msg";
+    msgDebug "description = $post_content";
+
+    return $dev;
+}
+ 
+my $control_point = Net::UPnP::ControlPoint->new();
+
+# Search for renderers
+my @dev_list;
+@dev_list = $control_point->search(st =>'upnp:rootdevice', mx => $wait_time);
+# Add manual renderer info
+my $manual_dev = create_dev_from_location($location) if $location;
+push (@dev_list, $manual_dev) if $manual_dev;
+ 
+my $renderer = Net::UPnP::AV::MediaRenderer->new();
+foreach my $dev (@dev_list) {
+    msgDebug "Device ", $dev->getfriendlyname(), " - ", $dev->getdevicetype(), " (", $dev->getlocation(), ")";
+
+    next unless $dev->getservicebyname($Net::UPnP::AV::MediaRenderer::AVTRNSPORT_SERVICE_TYPE);
+    
+    msgProgress "Found renderer ", $dev->getfriendlyname();
+    
+    if ($rendererName) {
+	next unless match_glob($rendererName, $dev->getfriendlyname());
+    }
+
+    msgInfo "${dryRunText}Playing to renderer ", $dev->getfriendlyname(), "...";
+
+    $renderer->setdevice($dev);
+
+    last;
+}
+
+my $action_result;
+my $instanceID = 0;
+
+my $didl= 
+    '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/">' .
+    '<item id="1'.$instanceID.'" parentID="20" restricted="0">' .
+    '<dc:title>dlna-play</dc:title>' .
+    '<upnp:class>object.item.audioItem.musicTrack</upnp:class>' .
+    '<res protocolInfo="http-get:*:audio/mpeg:DLNA.ORG_PN=MP3;DLNA.ORG_OP=01;DLNA.ORG_CI=0">'.$url.'</res>' .
+    '</item>' .
+    '</DIDL-Lite>'
+    ;
+# Escape XML
+$didl =~ s/\&/\&amp;/g;
+$didl =~ s/</\&lt;/g;
+$didl =~ s/>/\&gt;/g;
+$didl =~ s/"/\&quot;/g;
+$didl =~ s/'"'"'/\&apos;/g;
+#msgDebug $didl;
+
+# Play
+unless ($dryRun) {
+    $renderer->stop(); # Ignore errors
+
+    $action_result = $renderer->setAVTransportURI(
+	InstanceID => $instanceID,
+	CurrentURI => $url,
+	CurrentURIMetaData => $didl
+	);
+    unless ($action_result->getstatuscode() == 200) {
+	die "$0: can't send URL to renderer: ".$action_result->getstatuscode();
+    }
+
+    $action_result = $renderer->play();
+    unless ($action_result->getstatuscode() == 200) {
+	die "$0: can't start playing: ".$action_result->getstatuscode();
+    }
+}
+
+# Monitor
+my $avtrans_service = $renderer->getdevice()->getservicebyname($Net::UPnP::AV::MediaRenderer::AVTRNSPORT_SERVICE_TYPE);
+
+while (sleep 1) {
+    $action_result = $avtrans_service->postaction("GetTransportInfo", InstanceID => $instanceID);
+    unless ($action_result->getstatuscode() == 200) {
+	die "$0: can't monitor playing: ".$action_result->getstatuscode();
+    }
+    my $transport_info = $action_result->getargumentlist();
+    msgDebug Dumper($transport_info);
+
+    $action_result = $avtrans_service->postaction("GetMediaInfo", InstanceID => $instanceID);
+    unless ($action_result->getstatuscode() == 200) {
+	die "$0: can't monitor media: ".$action_result->getstatuscode();
+    }
+    my $media_info = $action_result->getargumentlist();	
+    msgDebug Dumper($media_info);
+    
+    $action_result = $avtrans_service->postaction("GetPositionInfo", InstanceID => $instanceID);
+    unless ($action_result->getstatuscode() == 200) {
+	die "$0: can't monitor playing: ".$action_result->getstatuscode();
+    }
+    my $position_info = $action_result->getargumentlist();
+    msgDebug Dumper($position_info);
+    
+    msgProgress $media_info->{CurrentURI},
+	' (',$position_info->{RelTime},'/',$position_info->{TrackDuration},')',
+	' : ',$transport_info->{CurrentTransportState};
+
+    last if $transport_info->{CurrentTransportState} eq 'STOPPED' || $transport_info->{CurrentTransportStatus} ne 'OK';
+}
+

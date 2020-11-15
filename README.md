@@ -97,6 +97,19 @@ Examples:
 
 ```
 
+## `dlna-play`
+
+This instructs a DLNA Media Renderer to play a single media file. It is intended
+to be used as the `execute` command for `dlna-playlist-play` although it is standalone
+and can be used as an ordinary media player command as well.
+
+The command instructs the media renderer to play the file, then monitors the playing
+and exits when the state goes to "STOPPED".
+
+### Usage
+```
+```
+
 ## TODO
 
 `dlna-media-archive` must be more controllable:
