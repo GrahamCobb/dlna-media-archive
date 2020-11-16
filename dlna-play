@@ -255,6 +255,11 @@ foreach my $dev (@dev_list) {
     last;
 }
 
+if (! $renderer->getdevice()) {
+    msgError "Renderer not found";
+    exit 1;
+}
+
 my $action_result;
 my $instanceID = 0;
 
@@ -304,21 +309,22 @@ unless ($dryRun) {
 my $avtrans_service = $renderer->getdevice()->getservicebyname($Net::UPnP::AV::MediaRenderer::AVTRNSPORT_SERVICE_TYPE);
 
 while (sleep 1) {
-    $action_result = $avtrans_service->postaction("GetTransportInfo", InstanceID => $instanceID);
+    my %action_args = (InstanceID => $instanceID);
+    $action_result = $avtrans_service->postaction("GetTransportInfo", \%action_args);
     unless ($action_result->getstatuscode() == 200) {
 	die "$0: can't monitor playing: ".$action_result->getstatuscode();
     }
     my $transport_info = $action_result->getargumentlist();
     msgDebug Dumper($transport_info);
 
-    $action_result = $avtrans_service->postaction("GetMediaInfo", InstanceID => $instanceID);
+    $action_result = $avtrans_service->postaction("GetMediaInfo", \%action_args);
     unless ($action_result->getstatuscode() == 200) {
 	die "$0: can't monitor media: ".$action_result->getstatuscode();
     }
     my $media_info = $action_result->getargumentlist();	
     msgDebug Dumper($media_info);
     
-    $action_result = $avtrans_service->postaction("GetPositionInfo", InstanceID => $instanceID);
+    $action_result = $avtrans_service->postaction("GetPositionInfo", \%action_args);
     unless ($action_result->getstatuscode() == 200) {
 	die "$0: can't monitor playing: ".$action_result->getstatuscode();
     }
@@ -329,6 +335,8 @@ while (sleep 1) {
 	' (',$position_info->{RelTime},'/',$position_info->{TrackDuration},')',
 	' : ',$transport_info->{CurrentTransportState};
 
-    last if $transport_info->{CurrentTransportState} eq 'STOPPED' || $transport_info->{CurrentTransportStatus} ne 'OK';
+    die "$0: error during playback: ".$transport_info->{CurrentTransportStatus} if $transport_info->{CurrentTransportStatus} ne 'OK';
+
+    last if $transport_info->{CurrentTransportState} eq 'STOPPED';
 }
 
