@@ -88,8 +88,8 @@ msgDebug "rendererName = $rendererName";
 msgDebug "verbosity = $verbosity";
 msgDebug "dryRun = $dryRun";
 msgDebug "wait_time = $wait_time";
-msgDebug "location = $location";
-msgDebug "stop = $stop";
+msgDebug "location = $location" if $location;
+msgDebug "stop = $stop" if $stop;
 
 =head1 NAME
 
