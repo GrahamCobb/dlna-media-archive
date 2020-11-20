@@ -273,7 +273,7 @@ my $instanceID = 0;
 
 my $didl= 
     '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/">' .
-    '<item id="1'.$instanceID.'" parentID="20" restricted="0">' .
+    '<item id="'.$instanceID.'" parentID="20" restricted="0">' .
     '<dc:title>'.$title.'</dc:title>' .
     '<upnp:class>object.item.audioItem.musicTrack</upnp:class>' .
     '<res protocolInfo="http-get:*:audio/mpeg:DLNA.ORG_PN=MP3;DLNA.ORG_OP=01;DLNA.ORG_CI=0">'.$url.'</res>' .
@@ -314,12 +314,12 @@ unless ($dryRun) {
 }
 # Let the renderer start before polling
 sleep 1;
-my $playbackSeen = 0;
+my $playbackStarted = 0;
 
 # Monitor
 my $avtrans_service = $renderer->getdevice()->getservicebyname($Net::UPnP::AV::MediaRenderer::AVTRNSPORT_SERVICE_TYPE);
 my $count = 0;
-my $startTimeout = 10;
+my $startRetries = 10;
 while (sleep 1) {
     my %action_args = (InstanceID => $instanceID);
     $action_result = $avtrans_service->postaction("GetTransportInfo", \%action_args);
@@ -351,17 +351,20 @@ while (sleep 1) {
 
     # Sometimes the renderer takes a while to get going, so ignore STOPPED state until it has been something else or has timed out
     if ($transport_info->{CurrentTransportState} eq 'STOPPED') {
-        last if $playbackSeen;
-        die "$0: playback did not start ($count)" if $count++ >= $startTimeout;
+        last if $playbackStarted;
+        die "$0: playback did not start ($count)" if $count++ > $startRetries;
 
         # Retry Play command
         msgInfo "Retrying play command ($count)";
+        msgInfo "Media info: ",Dumper($media_info);
+        msgInfo "Position info: ",Dumper($position_info);
+        msgInfo "Transport info: ",Dumper($transport_info);
         $action_result = $renderer->play();
         unless ($action_result->getstatuscode() == 200) {
             die "$0: can't restart playing: ".$action_result->getstatuscode();
         }
     } else {
-        $playbackSeen = 1;
+        $playbackStarted = 1;
     }
 }
 
