@@ -32,7 +32,7 @@ my $saveFile;
 my $saveFileName;
 my $resuming = 0;
 my $resumeFile;
-my $resumeAt;
+my $resumeAt = "";
 my $logFile;
 my $logfh;
 my $logging = 0;
@@ -59,6 +59,9 @@ sub msgDebug
 }
 # Autoflush output, otherwise errors appear in wrong place relative to logging
 $| = 1;
+
+my $savedCommandLine="$0 @ARGV";
+msgDebug "Command line: ".$savedCommandLine;
 
 #
 # Option processing
@@ -101,13 +104,16 @@ $titleOption = $titleOption || "--title" if (defined($titleOption));
 if (defined($resumeFile)) {
     # Filename may have been specified or we use the default
     my $resumeFileName = $resumeFile || $defaultSaveFile;
-    open(my $resumefh, "< :encoding(UTF-8)", $resumeFileName)
-	|| die "$0: can't open resume file $resumeFileName: $!";
-    $resumeAt = readline($resumefh);
-    close($resumefh);
-    $resuming = 1;
+    # Ignore non-existent file - this means -R can be specified even on first invocation
+    if (-e $resumeFileName) {
+	open(my $resumefh, "< :encoding(UTF-8)", $resumeFileName)
+	    || die "$0: can't open resume file $resumeFileName: $!";
+	$resumeAt = readline($resumefh);
+	close($resumefh);
+	$resuming = 1;
+    }
     unless (length $resumeAt) {
-	msgInfo "Resume cancelled as the previous playback finished or never started";
+	msgInfo "Resume cancelled as no previous playback information available";
 	$resuming = 0;
     }
 }
@@ -122,6 +128,7 @@ if (defined($logFile)) {
     open($logfh, "> :encoding(UTF-8)", $logFile)
 	|| die "$0: can't open log file $logFile: $!";
     $logging = 1;
+    print $logfh "Command line: ".$savedCommandLine."\n";
 }
 
 my ($serverName, $listName) = @ARGV;
@@ -283,10 +290,16 @@ Play the content in object 35 from a Humax HDR-2000T server.
 Create a playlist which can be used to play all the content in a playlist called 'my-playlist.m3u' stored on a Gerbera server.
 The generated playlist includes URLs so it can be played on a device not on the same LAN as the media server.
 
-=item B<dlna-playlist-play --execute vlc Gerbera "/Audio/Albums/Best of Status Quo">
+=item B<dlna-playlist-play --execute vlc Gerbera "/Audio/Albums/Best of Status Quo" -S>
 
 Play the specified album using vlc to play each track and keeping a record of how far it has got so it can be resumed later.
 
+=item B<dlna-playlist-play Gerbera 12222 --title -S -R -L playlist.log --execute "dlna-play --location http://192.168.5.215:2870/dmr.xml -w 0 -v 2">
+
+Real example we use to play a long Christmas Music playlist through the month of December while cooking. 
+Save and resume are specified because system crashes and even powercuts happen quite often. Log is specified
+because occasionally we get distracted into a task in another room while the music is playing and want to look 
+at the log to go back to where we were a few hours before.
 
 =back
 
