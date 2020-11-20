@@ -36,6 +36,7 @@ my $resumeAt;
 my $logFile;
 my $logfh;
 my $logging = 0;
+my $titleOption;
 
 #
 # Logging
@@ -71,6 +72,7 @@ GetOptions(
     "extended-playlist|P" => \$extendedPlaylist,
     "save|S:s" => \$saveFile,
     "resume|R:s" => \$resumeFile,
+    "title|T:s" => \$titleOption,
 	   "dry-run|n" => \$dryRun,
 	   "verbose|v:+" => \$verbosity,
 	   "man" => \$man,
@@ -92,6 +94,8 @@ if ($output) {
     open($outputfh, "> :encoding(UTF-8)", $output)
 	|| die "$0: can't open $output: $!" unless $dryRun;
 }
+
+$titleOption = $titleOption || "--title" if (defined($titleOption));
 
 # Note: read resume data before creating save file as they use the same file
 if (defined($resumeFile)) {
@@ -140,6 +144,7 @@ msgDebug "resuming = $resuming";
 msgDebug "resumeAt = $resumeAt" if $resuming;
 msgDebug "saving = $saving";
 msgDebug "saveFile = $saveFile" if $saving;
+msgDebug "titleOption = $titleOption" if defined($titleOption);
 
 =head1 NAME
 
@@ -161,6 +166,7 @@ dlna-playlist-play -?|--help|--man|--version
  Options:
 
   -e, --execute <command>       Command to execute. The URL for the content will be provided as the only argument.
+  -T, --title[=option-name]	Include an option to provide the title in the command executed. Default option is "--title".
   -L, --log <log-file>          Log which tracks were played when.
   -n, --dry-run			Do not actually play files or create playlist, just print messages
   -o, --output <file>           Do not execute commands, write the commands (or playlist) to the named file
@@ -180,10 +186,17 @@ Do not actually play files or create a playlist. The tree will be walked and pro
 
 =item B<--execute>
 
-Specify the command to execute to play the content. The URL for the content will be provided as the only argument.
+Specify the command to execute to play the content. The URL for the content will be provided as the only argument (but see B<--title> below).
 
 It is an error to specify either B<--playlist> or B<--extended-playlist> with B<--execute>. If none of B<--execute>, B<--playlist> or B<--extended-playlist> are specified then the default
 action is B<--execute mplayer>.
+
+=item B<--title>
+
+Include an option to specify the track title in the command executed to play the content. By default, the title is not included
+in the command.
+
+The value of this option is the name of the option to be provided to the command. The default name is "--title".
 
 =item B<--help>
 
@@ -352,21 +365,22 @@ sub play_content {
 
     if ($resuming) {
 	if ($resumeAt != $details{id}) {
-	    msgProgress "Resume: skipping ".$details{url}." (".$details{id}.")";
+	    msgProgress "Resume: skipping ".$details{url}." (".$details{id}.", ".$details{title}.")";
 	    return;
 	} else {
-	    msgProgress "Resuming at ".$details{id};
+	    msgProgress "Resuming at ".$details{id}." (".$details{title}.")";
 	    $resuming = 0;
 	}
     }
 
     if ($execute) {
-	msgProgress "${dryRunText}${execute} ".$details{url}." (".$details{id}.")";
+	msgProgress "${dryRunText}${execute} ".$details{url}." (".$details{id}.", ".$details{title}.")";
 	if (! $output) {
 	    save_id ($details{id}) if $saving;
-	    system($execute." ".$details{url}) unless $dryRun;
+	    system($execute." ".$details{url}.(defined($titleOption) ? " ".$titleOption." '".$details{title}."'" : "")) == 0
+		or die "executing command $execute failed: $?" unless $dryRun;
 	} else {
-	    print $outputfh $execute." ".$details{url}."\n" unless $dryRun;
+	    print $outputfh $execute." ".$details{url}.($titleOption ? " ".$titleOption." '".$details{title}."'" : "")."\n" unless $dryRun;
 	}
     }
 

@@ -17,12 +17,13 @@ use XML::Simple;
 
 our $VERSION = 0.1;
 
-my $verbosity = 2;
+my $verbosity = 1;
 my $man = 0;
 my $dryRun = 0;
 my $wait_time = 3;
 my $location;
 my $stop;
+my $title = "dlna-play";
 
 #
 # Logging
@@ -54,9 +55,10 @@ GetOptions(
     "dry-run|n" => \$dryRun,
     "verbose|v:+" => \$verbosity,
     "man" => \$man,
-    "wait|w:s" => \$wait_time,
-    "location|l:s" => \$location,
+    "wait|w=s" => \$wait_time,
+    "location|l=s" => \$location,
     "stop|S" => \$stop,
+    "title|T=s" => \$title,
     ) or pod2usage(2);
 msgDebug "man = $man";
 if ($man) {
@@ -90,6 +92,7 @@ msgDebug "dryRun = $dryRun";
 msgDebug "wait_time = $wait_time";
 msgDebug "location = $location" if $location;
 msgDebug "stop = $stop" if $stop;
+msgDebug "title = $title" if $title;
 
 =head1 NAME
 
@@ -111,6 +114,7 @@ dlna-play -?|--help|--man|--version
 
   -w, --wait=N			Seconds to wait for renderer to be found (default = 3)
   -l, --location=<url>		URL providing description XML for a renderer to include in the search
+  -T, --title="text"		Track title to display during playback
   -S, --stop			Stop playback but do not start another track
   -n, --dry-run			Do not actually play file, just monitor
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
@@ -139,6 +143,10 @@ For example:
 
 If local renderers should B<not> also be considered, specify '--wait 0' as well.
 See also the description below about how renderer names interact with --location.
+
+=item B<--title>
+
+Text for the renderer to display as the track title.
 
 =item B<--stop>
 
@@ -207,8 +215,8 @@ sub create_dev_from_location {
 
     my $http_req = Net::UPnP::HTTP->new();
     my $post_res = $http_req->post($dev_addr, $dev_port, "GET", $dev_path, "", "");
-    unless ($post_res->getstatuscode() == 200) {
-	die "$0: can't fetch description from $dev_location: ".$post_res->getstatuscode();
+    unless ($post_res && $post_res->getstatuscode() == 200) {
+	die "$0: can't fetch description from $dev_location: ".($post_res ? $post_res->getstatuscode() : '');
     }
     msgDebug $post_res->getstatus();
     msgDebug $post_res->getheader();
@@ -248,7 +256,7 @@ foreach my $dev (@dev_list) {
 	next unless match_glob($rendererName, $dev->getfriendlyname());
     }
 
-    msgInfo "${dryRunText}Playing to renderer ", $dev->getfriendlyname(), "...";
+    msgInfo "${dryRunText}Playing to renderer ", $dev->getfriendlyname(), "... ", $title;
 
     $renderer->setdevice($dev);
 
@@ -266,7 +274,7 @@ my $instanceID = 0;
 my $didl= 
     '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/">' .
     '<item id="1'.$instanceID.'" parentID="20" restricted="0">' .
-    '<dc:title>dlna-play</dc:title>' .
+    '<dc:title>'.$title.'</dc:title>' .
     '<upnp:class>object.item.audioItem.musicTrack</upnp:class>' .
     '<res protocolInfo="http-get:*:audio/mpeg:DLNA.ORG_PN=MP3;DLNA.ORG_OP=01;DLNA.ORG_CI=0">'.$url.'</res>' .
     '</item>' .
@@ -304,10 +312,14 @@ unless ($dryRun) {
 	die "$0: can't start playing: ".$action_result->getstatuscode();
     }
 }
+# Let the renderer start before polling
+sleep 1;
+my $playbackSeen = 0;
 
 # Monitor
 my $avtrans_service = $renderer->getdevice()->getservicebyname($Net::UPnP::AV::MediaRenderer::AVTRNSPORT_SERVICE_TYPE);
-
+my $count = 0;
+my $startTimeout = 10;
 while (sleep 1) {
     my %action_args = (InstanceID => $instanceID);
     $action_result = $avtrans_service->postaction("GetTransportInfo", \%action_args);
@@ -337,6 +349,19 @@ while (sleep 1) {
 
     die "$0: error during playback: ".$transport_info->{CurrentTransportStatus} if $transport_info->{CurrentTransportStatus} ne 'OK';
 
-    last if $transport_info->{CurrentTransportState} eq 'STOPPED';
+    # Sometimes the renderer takes a while to get going, so ignore STOPPED state until it has been something else or has timed out
+    if ($transport_info->{CurrentTransportState} eq 'STOPPED') {
+        last if $playbackSeen;
+        die "$0: playback did not start ($count)" if $count++ >= $startTimeout;
+
+        # Retry Play command
+        msgInfo "Retrying play command ($count)";
+        $action_result = $renderer->play();
+        unless ($action_result->getstatuscode() == 200) {
+            die "$0: can't restart playing: ".$action_result->getstatuscode();
+        }
+    } else {
+        $playbackSeen = 1;
+    }
 }
 
