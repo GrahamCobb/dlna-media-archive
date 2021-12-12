@@ -82,6 +82,7 @@ Options:
 
   -e, --execute <command>       Command to execute. The URL for the content will be provided as the only argument.
   -L, --log <log-file>          Log which tracks were played when.
+  -l, --append-log <log-file>   Same as --log but append to log file.
   -n, --dry-run			Do not actually play files or create playlist, just print messages
   -o, --output <file>           Do not execute commands, write the commands (or playlist) to the named file
   -p, --playlist                Do not issue commands, just write the URLs as playlist.

@@ -1,8 +1,8 @@
 #!/usr/bin/perl
 # Copyright (C) 2005 by Satoshi Konno
-# Copyright (C) 2018 Graham R. Cobb
+# Copyright (C) 2018-2021 Graham R. Cobb
 # Released under GPL V2 -- see LICENSE
-# Most of this code is taken from the documentation for Net::UPnP::AV::MediaServer -- see http://search.cpan.org/~skonno/Net-UPnP-1.4/lib/Net/UPnP/AV/MediaServer.pm
+# Much of this code is taken from the documentation for Net::UPnP::AV::MediaServer -- see http://search.cpan.org/~skonno/Net-UPnP-1.4/lib/Net/UPnP/AV/MediaServer.pm
 
 use strict;
 use warnings;
@@ -15,7 +15,7 @@ use Text::Glob qw( match_glob glob_to_regex );
 use DateTime;
 use JSON;
 
-our $VERSION = 0.4;
+our $VERSION = 0.5;
 
 my $verbosity = 2;
 my $man = 0;
@@ -34,6 +34,7 @@ my $resuming = 0;
 my $resumeFile;
 my $resumeAt = "";
 my $logFile;
+my $appendLogFile;
 my $logfh;
 my $logging = 0;
 my $titleOption;
@@ -70,6 +71,7 @@ msgDebug "Command line: ".$savedCommandLine;
 GetOptions(
     "execute|e=s" => \$execute,
     "log|L=s" => \$logFile,
+    "append-log|l=s" => \$appendLogFile,
     "output|o=s" => \$output,
     "playlist|p" => \$playlist,
     "extended-playlist|P" => \$extendedPlaylist,
@@ -87,6 +89,11 @@ if ($man) {
 }
 if ($execute && ($playlist || $extendedPlaylist)) {
     msgError "Cannot specify --execute and --playlist or --extended-playlist";
+    pod2usage(-verbose => 2);
+    exit;
+}
+if (defined($logFile) && defined($appendLogFile)) {
+    msgError "Cannot specify --log and --append-log";
     pod2usage(-verbose => 2);
     exit;
 }
@@ -125,8 +132,15 @@ if (defined($saveFile)) {
 }
 
 if (defined($logFile)) {
-    open($logfh, "> :encoding(UTF-8)", $logFile)
+    open $logfh, "> :encoding(UTF-8)", $logFile
 	|| die "$0: can't open log file $logFile: $!";
+    $logging = 1;
+    print $logfh "Command line: ".$savedCommandLine."\n";
+}
+
+if (defined($appendLogFile)) {
+    open $logfh, ">> :encoding(UTF-8)", $appendLogFile
+	|| die "$0: can't open log file $appendLogFile: $!";
     $logging = 1;
     print $logfh "Command line: ".$savedCommandLine."\n";
 }
@@ -175,6 +189,7 @@ dlna-playlist-play -?|--help|--man|--version
   -e, --execute <command>       Command to execute. The URL for the content will be provided as the only argument.
   -T, --title[=option-name]	Include an option to provide the title in the command executed. Default option is "--title".
   -L, --log <log-file>          Log which tracks were played when.
+  -l, --append-log <log-file>   Same as --log but append to log file.
   -n, --dry-run			Do not actually play files or create playlist, just print messages
   -o, --output <file>           Do not execute commands, write the commands (or playlist) to the named file
   -p, --playlist                Do not issue commands, just write the URLs as playlist.
@@ -211,7 +226,15 @@ Print a brief help message and exits.
 
 =item B<--log>
 
-Log a record of the date/time of each track played to the specified file.
+Log a record of the date/time of each track played to the specified file. 
+
+It is an error to specify both B<--log> and B<--append-log>.
+
+=item B<--append-log>
+
+As B<--log> except that the log records are appended to the specified file. 
+
+It is an error to specify both B<--log> and B<--append-log>.
 
 =item B<--man>
 
@@ -294,10 +317,10 @@ The generated playlist includes URLs so it can be played on a device not on the 
 
 Play the specified album using vlc to play each track and keeping a record of how far it has got so it can be resumed later.
 
-=item B<dlna-playlist-play Gerbera 12222 --title -S -R -L playlist.log --execute "dlna-play --location http://192.168.5.215:2870/dmr.xml -w 0 -v 2">
+=item B<dlna-playlist-play Gerbera 12222 --title -S -R -l playlist.log --execute "dlna-play --location http://192.168.5.215:2870/dmr.xml -w 0 -v 2 -p 240">
 
 Real example we use to play a long Christmas Music playlist through the month of December while cooking. 
-Save and resume are specified because system crashes and even powercuts happen quite often. Log is specified
+Save and resume are specified because system crashes and even powercuts happen quite often. Append-log is specified
 because occasionally we get distracted into a task in another room while the music is playing and want to look 
 at the log to go back to where we were a few hours before.
 
