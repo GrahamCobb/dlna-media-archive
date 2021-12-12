@@ -24,6 +24,8 @@ my $wait_time = 3;
 my $location;
 my $stop;
 my $title = "dlna-play";
+my $limit_pause = 0;
+my $restart_pause = 0;
 
 #
 # Logging
@@ -59,6 +61,8 @@ GetOptions(
     "location|l=s" => \$location,
     "stop|S" => \$stop,
     "title|T=s" => \$title,
+    "limit-pause|p=i" => \$limit_pause,
+    "restart-pause|r=i" => \$restart_pause,
     ) or pod2usage(2);
 msgDebug "man = $man";
 if ($man) {
@@ -82,6 +86,11 @@ if (scalar(@ARGV) == 1) {
     exit 1;
 }
 $rendererName = $rendererName || '*';
+if ($limit_pause && $restart_pause) {
+    msgError "No more than one of --limit-pause and --restart-pause can be specified";
+    pod2usage(2);
+    exit 1;
+}
 my $dryRunText = $dryRun ? "(dry run) " : "";
 $Net::UPnP::DEBUG=1 if $verbosity >= 3;
 
@@ -93,6 +102,8 @@ msgDebug "wait_time = $wait_time";
 msgDebug "location = $location" if $location;
 msgDebug "stop = $stop" if $stop;
 msgDebug "title = $title" if $title;
+msgDebug "limit_pause = $limit_pause" if $limit_pause;
+msgDebug "restart_pause = $restart_pause" if $restart_pause;
 
 =head1 NAME
 
@@ -118,6 +129,8 @@ dlna-play -?|--help|--man|--version
   -S, --stop			Stop playback but do not start another track
   -n, --dry-run			Do not actually play file, just monitor
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
+  -p, --limit-pause=N		Exit with error if paused for longer than N seconds
+  -r, --restart-pause=N         Restart pause if paused for longer than N seconds
 
 =head1 OPTIONS
 
@@ -158,6 +171,26 @@ the playback.
 
 Do not actually play file.
 
+=item B<--limit-pause>
+
+Number of seconds for maximum pause time. If paused for longer than this, playback ends with an error status.
+
+Some renderers limit the maximum time for pause, and behaviour after that time is not defined.
+As an alternative to --restart-pause, this option causes dlna-play to stop playback and exit 
+with an error status.
+
+See also --restart-pause.
+
+=item B<--restart-pause>
+
+Number of seconds for maximum pause time. If paused for longer than this, the pause is restarted.
+
+Some renderers limit the maximum time for pause, and behaviour after that time is not defined.
+In an attempt to allow indefinite pauses, dlna-play will briefly restart playback and then
+immediately pause again. However, for some renderers this doesn't work well.
+
+See also --limit-pause.
+
 =item B<--help>
 
 Print a brief help message and exits.
@@ -197,6 +230,13 @@ Play the url on any renderer we can see on the network.
 
 Play the url on the renderer described at the specified location whatever
 name it may be advertising.
+
+=item B<dlna-play --location http://192.168.5.215:2870/dmr.xml -w 0 -v 2 -p 240>
+
+This incomplete command is a real example of a specification for the dlna-playlist-play --execute option.
+We use this to play Christmas Music through the month of December while cooking.
+Location and no wait are specified to direct to the particular renderer in the kitchen.
+Limit-pause is specified as our renderer restarts playing if it is paused too long.
 
 =back
 
@@ -307,7 +347,7 @@ unless ($dryRun) {
 	die "$0: can't send URL to renderer: ".$action_result->getstatuscode();
     }
 
-    $action_result = $renderer->play();
+    $action_result = $renderer->play(InstanceID => $instanceID);
     unless ($action_result->getstatuscode() == 200) {
 	die "$0: can't start playing: ".$action_result->getstatuscode();
     }
@@ -320,7 +360,9 @@ my $playbackStarted = 0;
 my $avtrans_service = $renderer->getdevice()->getservicebyname($Net::UPnP::AV::MediaRenderer::AVTRNSPORT_SERVICE_TYPE);
 my $count = 0;
 my $startRetries = 10;
-while (sleep 1) {
+my $pauseStart = 0;
+MONITOR: while (sleep 1) {
+    $count++;
     my %action_args = (InstanceID => $instanceID);
     $action_result = $avtrans_service->postaction("GetTransportInfo", \%action_args);
     unless ($action_result->getstatuscode() == 200) {
@@ -351,20 +393,69 @@ while (sleep 1) {
 
     # Sometimes the renderer takes a while to get going, so ignore STOPPED state until it has been something else or has timed out
     if ($transport_info->{CurrentTransportState} eq 'STOPPED') {
-        last if $playbackStarted;
-        die "$0: playback did not start ($count)" if $count++ > $startRetries;
+        $pauseStart = 0;
+        last MONITOR if $playbackStarted;
+        die "$0: playback did not start ($count)" if $count > $startRetries;
 
         # Retry Play command
         msgInfo "Retrying play command ($count)";
         msgInfo "Media info: ",Dumper($media_info);
         msgInfo "Position info: ",Dumper($position_info);
         msgInfo "Transport info: ",Dumper($transport_info);
-        $action_result = $renderer->play();
-        unless ($action_result->getstatuscode() == 200) {
-            die "$0: can't restart playing: ".$action_result->getstatuscode();
+        $action_result = $renderer->play(InstanceID => $instanceID);
+	die "$0: can't restart playing: ".$action_result->getstatuscode() unless $action_result->getstatuscode() == 200;
+    } elsif ($transport_info->{CurrentTransportState} eq 'PLAYING') {
+        $pauseStart = 0;
+        $playbackStarted = 1;
+    } elsif ($transport_info->{CurrentTransportState} eq 'PAUSED_PLAYBACK') {
+        $pauseStart = $count if ! $pauseStart;
+
+        # The trick below, to restart pause every 4 minutes, doesn't work with some renderers.
+        # So --limit-pause forces playback to stop and exit with an error instead
+        # so the caller can decide what to do (dlna-playlist-play will stop the
+        # playlist but can be continued if a resume file is used).
+        if ($limit_pause && ($count - $pauseStart) > $limit_pause) {
+            $action_result = $renderer->stop(InstanceID => $instanceID);
+            die "$0: can't stop: ".$action_result->getstatuscode() unless $action_result->getstatuscode() == 200;
+
+            die "$0: paused more than $limit_pause seconds";
+        }
+
+        # Some renderers limit Pause to 5 minutes - restart that limit after 4 minutes.
+        if ($restart_pause && ($count - $pauseStart) > $restart_pause) {
+            msgInfo "Restarting pause (".($count - $pauseStart).")";
+
+            # Unpause briefly...
+	    my $playwait=20;
+	    while ($playwait > 0) {
+		$action_result = $renderer->play(InstanceID => $instanceID);
+		die "$0: can't unpause: ".$action_result->getstatuscode() unless $action_result->getstatuscode() == 200;
+		$action_result = $avtrans_service->postaction("GetTransportInfo", \%action_args);
+		die "$0: can't GetTransportInfo: ".$action_result->getstatuscode() unless $action_result->getstatuscode() == 200;
+		$transport_info = $action_result->getargumentlist();
+                last if $transport_info->{CurrentTransportState} eq 'PLAYING';
+		$playwait--;
+	    }
+	    die "$0: failed to briefly restart playing: ".$transport_info->{CurrentTransportState} unless $transport_info->{CurrentTransportState} eq 'PLAYING';
+
+            # Repause - loop to deal with renderer not being ready to pause yet
+            my $repauses=20;
+            while ($repauses > 0) {
+                $action_result = $avtrans_service->postaction("Pause", \%action_args);
+		die "$0: can't re-pause: ".$action_result->getstatuscode() unless $action_result->getstatuscode() == 200;
+		$action_result = $avtrans_service->postaction("GetTransportInfo", \%action_args);
+		die "$0: can't GetTransportInfo: ".$action_result->getstatuscode() unless $action_result->getstatuscode() == 200;
+		$transport_info = $action_result->getargumentlist();
+                last if $transport_info->{CurrentTransportState} eq 'PAUSED_PLAYBACK';
+                $repauses--;
+            }
+            die "$0: re-pause failed: ".$action_result->getstatuscode()." ".Dumper($action_result) unless $transport_info->{CurrentTransportState} eq 'PAUSED_PLAYBACK' ;
+
+            $pauseStart = $count;
         }
     } else {
-        $playbackStarted = 1;
+        # Any other state - clear the pause timer
+        $pauseStart = 0;
     }
 }
 

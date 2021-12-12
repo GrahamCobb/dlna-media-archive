@@ -81,11 +81,13 @@ Commands:
 Options:
 
   -e, --execute <command>       Command to execute. The URL for the content will be provided as the only argument.
+  -T, --title[=option-name]     Include an option to provide the title in the command executed. Default option is "--title".
   -L, --log <log-file>          Log which tracks were played when.
   -l, --append-log <log-file>   Same as --log but append to log file.
   -n, --dry-run			Do not actually play files or create playlist, just print messages
   -o, --output <file>           Do not execute commands, write the commands (or playlist) to the named file
   -p, --playlist                Do not issue commands, just write the URLs as playlist.
+  -P, --extended-playlist       Do not issue commands, write the URLs as an extended playlist.
   -R, --resume[=<file>]         Restart playing with the item interrupted last time.
   -S, --save[=<file>]           Save the id of the object being played to allow resume next time.
   -v, --verbose[=N]		Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
@@ -95,6 +97,8 @@ Examples:
   dlna-playlist-play Gerbera christmas-playlist.m3u --save --resume
 
   dlna-playlist-play "Nas*" /Videos --playlist --output all-my-videos.m3u
+
+See dlna-playlist-play --man for full documentation and for further examples.
 
 ```
 
@@ -130,6 +134,8 @@ SYNOPSIS
       -S, --stop                    Stop playback but do not start another track
       -n, --dry-run                 Do not actually play file, just monitor
       -v, --verbose[=N]             Increment or set verbosity level (0 - quiet, 1 - info, 2 - progress, 3 - debug)
+      -p, --limit-pause=N           Exit with error if paused for longer than N seconds
+      -r, --restart-pause=N         Restart pause if paused for longer than N seconds
 
 OPTIONS
     --wait  Number of seconds to wait searching for all renderers visible on
@@ -192,6 +198,8 @@ EXAMPLES
     dlna-play --wait 0 --location=http://192.168.111.222:4321/desc <url>
             Play the url on the renderer described at the specified location
             whatever name it may be advertising.
+
+See dlna-play --man for full documentation and for further examples.
 
 ```
 
